@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "轻量笔记",
+    "slug": "note-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#D4B896"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.synexim.noteexpo",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "使用 Face ID 保护您的笔记安全"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#D4B896"
+      },
+      "package": "com.synexim.noteexpo",
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "使用 Face ID 保护您的笔记安全"
+        }
+      ]
+    ]
+  }
+}
