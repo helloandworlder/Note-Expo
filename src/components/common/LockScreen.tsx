@@ -8,6 +8,7 @@ import {
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
+  FONTS,
   ThemeColors,
   getThemeColors,
 } from '../../constants/theme';
@@ -105,12 +106,14 @@ const createStyles = (colors: ThemeColors) =>
     },
     title: {
       fontSize: FONT_SIZES.heading,
-      fontWeight: 'bold',
+      fontFamily: FONTS.display,
+      fontWeight: '600',
       color: colors.textPrimary,
       marginBottom: SPACING.sm,
     },
     subtitle: {
       fontSize: FONT_SIZES.medium,
+      fontFamily: FONTS.regular,
       color: colors.textSecondary,
       marginBottom: SPACING.xl,
     },
@@ -120,14 +123,21 @@ const createStyles = (colors: ThemeColors) =>
       borderRadius: BORDER_RADIUS.md,
       paddingVertical: SPACING.md,
       alignItems: 'center',
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 2,
     },
     buttonText: {
       fontSize: FONT_SIZES.medium,
+      fontFamily: FONTS.medium,
       fontWeight: '600',
       color: colors.paperWhite,
     },
     unavailableText: {
       fontSize: FONT_SIZES.medium,
+      fontFamily: FONTS.regular,
       color: colors.textSecondary,
     },
   });

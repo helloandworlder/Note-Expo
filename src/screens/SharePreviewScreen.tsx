@@ -21,6 +21,7 @@ import {
   SPACING,
   BORDER_RADIUS,
   FONT_SCALE,
+  FONTS,
   ThemeColors,
   getThemeColors,
 } from '../constants/theme';
@@ -172,10 +173,14 @@ const createStyles = (colors: ThemeColors) =>
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    backgroundColor: colors.paperWhite,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.paperLine,
   },
   headerTitle: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontFamily: FONTS.display,
+    fontWeight: '600',
     color: colors.textPrimary,
   },
   headerActions: {
@@ -198,11 +203,13 @@ const createStyles = (colors: ThemeColors) =>
   },
   title: {
     fontSize: FONT_SIZES.heading,
-    fontWeight: 'bold',
+    fontFamily: FONTS.display,
+    fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: SPACING.md,
   },
   contentText: {
+    fontFamily: FONTS.regular,
     color: colors.textPrimary,
   },
   imageBlock: {
@@ -216,11 +223,13 @@ const createStyles = (colors: ThemeColors) =>
   imageCaption: {
     marginTop: SPACING.sm,
     fontSize: FONT_SIZES.small,
+    fontFamily: FONTS.regular,
     color: colors.textSecondary,
   },
   footerText: {
     marginTop: SPACING.xl,
     fontSize: FONT_SIZES.small,
+    fontFamily: FONTS.medium,
     color: colors.textSecondary,
     textAlign: 'right',
   },

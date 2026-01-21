@@ -7,7 +7,7 @@ import React, {
 } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { RichEditor, actions } from 'react-native-pell-rich-editor';
-import { ThemeColors, getThemeColors } from '../../constants/theme';
+import { FONTS, ThemeColors, getThemeColors } from '../../constants/theme';
 import { AppearanceType } from '../../types';
 
 interface RichTextEditorProps {
@@ -40,7 +40,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
 
     const customCSS = `
       * {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-family: ${FONTS.regular}, Georgia, serif;
       }
       body {
         background-color: ${themeColors.paper};
@@ -54,18 +54,21 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         font-weight: bold;
         margin: 16px 0 8px 0;
         color: ${themeColors.text};
+        font-family: ${FONTS.display}, Georgia, serif;
       }
       h2 {
         font-size: ${fontSize * 1.4}px;
         font-weight: bold;
         margin: 14px 0 7px 0;
         color: ${themeColors.text};
+        font-family: ${FONTS.display}, Georgia, serif;
       }
       h3 {
         font-size: ${fontSize * 1.2}px;
         font-weight: bold;
         margin: 12px 0 6px 0;
         color: ${themeColors.text};
+        font-family: ${FONTS.display}, Georgia, serif;
       }
       p {
         margin: 8px 0;
