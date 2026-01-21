@@ -22,8 +22,8 @@ import {
   BORDER_RADIUS,
   FONTS,
   ThemeColors,
-  getThemeColors,
 } from '../constants/theme';
+import { useThemeColors } from '../hooks/useThemeColors';
 import { useNoteStore } from '../store/noteStore';
 import { AppSettings } from '../types';
 import { t } from '../utils/i18n';
@@ -49,7 +49,9 @@ const DEFAULT_OPTIONS: Record<PickerKey, { value: string; label: string }[]> = {
     { value: 'large', label: t('settings.textLarge') },
   ],
   appearance: [
+    { value: 'system', label: t('settings.appearanceSystem') },
     { value: 'linen', label: t('settings.appearanceLinen') },
+    { value: 'dark', label: t('settings.appearanceDark') },
     { value: 'paper', label: t('settings.appearancePaper') },
     { value: 'wood', label: t('settings.appearanceWood') },
   ],
@@ -72,10 +74,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     loadSettings();
   }, []);
 
-  const themeColors = useMemo(
-    () => getThemeColors(settings.appearance),
-    [settings.appearance]
-  );
+  const themeColors = useThemeColors(settings.appearance);
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
   const checkBiometricAvailability = async () => {

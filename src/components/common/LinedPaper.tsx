@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, ViewStyle } from 'react-native';
-import { ThemeColors, getThemeColors } from '../../constants/theme';
+import { ThemeColors } from '../../constants/theme';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { AppearanceType } from '../../types';
 
 interface LinedPaperProps {
@@ -19,7 +20,7 @@ export const LinedPaper: React.FC<LinedPaperProps> = ({
   appearance = 'linen',
 }) => {
   const [height, setHeight] = useState(0);
-  const themeColors = useMemo(() => getThemeColors(appearance), [appearance]);
+  const themeColors = useThemeColors(appearance);
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
   const handleLayout = (event: LayoutChangeEvent) => {

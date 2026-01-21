@@ -1,5 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  Easing,
+} from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WoodBackground } from './WoodBackground';
@@ -10,8 +17,8 @@ import {
   BORDER_RADIUS,
   FONTS,
   ThemeColors,
-  getThemeColors,
 } from '../../constants/theme';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { useNoteStore } from '../../store/noteStore';
 import { t } from '../../utils/i18n';
 
@@ -23,8 +30,9 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const appearance = useNoteStore((state) => state.settings.appearance);
-  const themeColors = useMemo(() => getThemeColors(appearance), [appearance]);
+  const themeColors = useThemeColors(appearance);
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
+  const pulse = useRef(new Animated.Value(0)).current;
 
   const authenticateWithBiometric = useCallback(async () => {
     try {
@@ -63,6 +71,40 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     checkAndAuthenticate();
   }, [checkAndAuthenticate]);
 
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    animation.start();
+
+    return () => {
+      animation.stop();
+    };
+  }, [pulse]);
+
+  const pulseScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.05],
+  });
+  const pulseOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.65, 1],
+  });
+
   return (
     <WoodBackground variant={appearance}>
       <View style={styles.container}>
@@ -71,19 +113,25 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
           contentStyle={styles.cardContent}
           appearance={appearance}
         >
-          <View style={styles.iconWrap}>
+          <Animated.View style={[styles.iconWrap, { transform: [{ scale: pulseScale }] }]}>
             <Text style={styles.icon}>🔒</Text>
-          </View>
+          </Animated.View>
           <Text style={styles.title}>{t('lock.title')}</Text>
           <Text style={styles.subtitle}>{t('lock.subtitle')}</Text>
 
           {biometricEnabled ? (
-            <TouchableOpacity
-              style={styles.button}
-              onPress={authenticateWithBiometric}
-            >
-              <Text style={styles.buttonText}>{t('lock.faceId')}</Text>
-            </TouchableOpacity>
+            <View style={styles.actionStack}>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={authenticateWithBiometric}
+              >
+                <Text style={styles.buttonText}>{t('lock.faceId')}</Text>
+              </TouchableOpacity>
+              <Animated.View style={[styles.hintRow, { opacity: pulseOpacity }]}>
+                <View style={styles.hintDot} />
+                <Text style={styles.hintText}>{t('lock.hint')}</Text>
+              </Animated.View>
+            </View>
           ) : (
             <View style={styles.unavailableBox}>
               <Text style={styles.unavailableText}>{t('lock.unavailable')}</Text>
@@ -147,6 +195,11 @@ const createStyles = (colors: ThemeColors) =>
       textAlign: 'center',
       lineHeight: 20,
     },
+    actionStack: {
+      width: '100%',
+      alignItems: 'center',
+      gap: SPACING.sm,
+    },
     button: {
       width: '100%',
       backgroundColor: colors.accent,
@@ -166,6 +219,22 @@ const createStyles = (colors: ThemeColors) =>
       fontFamily: FONTS.medium,
       fontWeight: '600',
       color: colors.paperWhite,
+    },
+    hintRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs,
+    },
+    hintDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.accent,
+    },
+    hintText: {
+      fontSize: FONT_SIZES.small,
+      fontFamily: FONTS.medium,
+      color: colors.textSecondary,
     },
     unavailableBox: {
       width: '100%',

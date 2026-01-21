@@ -20,8 +20,8 @@ import {
   BORDER_RADIUS,
   FONTS,
   ThemeColors,
-  getThemeColors,
 } from '../constants/theme';
+import { useThemeColors } from '../hooks/useThemeColors';
 import { Folder, Note } from '../types';
 import { formatDate, t } from '../utils/i18n';
 
@@ -50,10 +50,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     loadData();
   }, [loadData]);
 
-  const themeColors = useMemo(
-    () => getThemeColors(settings.appearance),
-    [settings.appearance]
-  );
+  const themeColors = useThemeColors(settings.appearance);
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
   const getFolderName = (folder: Folder) => {
