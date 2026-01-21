@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,19 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { WoodBackground } from '../components/common/WoodBackground';
 import { PaperCard } from '../components/common/PaperCard';
 import { useNoteStore } from '../store/noteStore';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../constants/theme';
-import { Note, Folder } from '../types';
+import {
+  FONT_SIZES,
+  SPACING,
+  BORDER_RADIUS,
+  ThemeColors,
+  getThemeColors,
+} from '../constants/theme';
+import { Folder, Note } from '../types';
+import { formatDate, t } from '../utils/i18n';
 
 interface HomeScreenProps {
   navigation: any;
@@ -29,52 +37,85 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     addFolder,
     deleteFolder,
     loadData,
+    settings,
   } = useNoteStore();
 
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
-  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [showFolderMenu, setShowFolderMenu] = useState(false);
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
-  // 过滤笔记
-  const filteredNotes = notes.filter((note) => {
-    // 文件夹过滤
-    if (selectedFolder === 'all') {
-      // 显示所有笔记
-    } else if (selectedFolder === 'favorites') {
-      if (!note.isFavorite) return false;
-    } else {
-      if (note.folderId !== selectedFolder) return false;
-    }
+  const themeColors = useMemo(
+    () => getThemeColors(settings.appearance),
+    [settings.appearance]
+  );
+  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
-    // 搜索过滤
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        note.title.toLowerCase().includes(query) ||
-        note.content.toLowerCase().includes(query)
-      );
-    }
+  const getFolderName = (folder: Folder) => {
+    if (folder.id === 'all') return t('home.folderAll');
+    if (folder.id === 'favorites') return t('home.folderFavorites');
+    return folder.name;
+  };
 
-    return true;
-  });
+  const getNoteCount = (folderId: string) =>
+    notes.filter((note) =>
+      folderId === 'all'
+        ? true
+        : folderId === 'favorites'
+        ? note.isFavorite
+        : note.folderId === folderId
+    ).length;
+
+  const filteredNotes = useMemo(() => {
+    const filtered = notes.filter((note) => {
+      if (selectedFolder === 'favorites' && !note.isFavorite) return false;
+      if (selectedFolder !== 'all' && selectedFolder !== 'favorites') {
+        if (note.folderId !== selectedFolder) return false;
+      }
+
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          note.title.toLowerCase().includes(query) ||
+          note.content.toLowerCase().includes(query)
+        );
+      }
+
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      switch (settings.noteSort) {
+        case 'updated-asc':
+          return a.updatedAt - b.updatedAt;
+        case 'created-desc':
+          return b.createdAt - a.createdAt;
+        case 'created-asc':
+          return a.createdAt - b.createdAt;
+        case 'updated-desc':
+        default:
+          return b.updatedAt - a.updatedAt;
+      }
+    });
+  }, [notes, searchQuery, selectedFolder, settings.noteSort]);
 
   const handleAddFolder = () => {
     if (newFolderName.trim()) {
       addFolder(newFolderName.trim());
       setNewFolderName('');
-      setShowFolderModal(false);
+      setShowNewFolderModal(false);
     }
   };
 
   const handleDeleteFolder = (folderId: string) => {
-    Alert.alert('删除文件夹', '确定要删除这个文件夹吗？', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('home.deleteFolderTitle'), t('home.deleteFolderMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '删除',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => deleteFolder(folderId),
       },
@@ -85,18 +126,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     <TouchableOpacity
       onPress={() => navigation.navigate('Editor', { noteId: item.id })}
     >
-      <PaperCard style={styles.noteCard}>
+      <PaperCard
+        style={styles.noteCard}
+        contentStyle={styles.noteCardContent}
+        appearance={settings.appearance}
+      >
         <View style={styles.noteHeader}>
-          <Text style={styles.noteDate}>
-            {new Date(item.updatedAt).toLocaleDateString('zh-CN')}
-          </Text>
-          {item.isFavorite && <Text style={styles.favoriteIcon}>⭐</Text>}
+          <Text style={styles.noteDate}>{formatDate(item.updatedAt)}</Text>
+          {item.isFavorite && (
+            <Ionicons name="star" size={14} color={themeColors.favorite} />
+          )}
         </View>
         <Text style={styles.noteTitle} numberOfLines={1}>
-          {item.title || '无标题'}
+          {item.title || t('note.untitled')}
         </Text>
         <Text style={styles.noteContent} numberOfLines={2}>
-          {item.content || '空白笔记'}
+          {item.content || t('note.empty')}
         </Text>
       </PaperCard>
     </TouchableOpacity>
@@ -104,78 +149,101 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const renderFolderItem = ({ item }: { item: Folder }) => {
     const isSelected = selectedFolder === item.id;
-    const noteCount = notes.filter((note) =>
-      item.id === 'all'
-        ? true
-        : item.id === 'favorites'
-        ? note.isFavorite
-        : note.folderId === item.id
-    ).length;
-
     return (
       <TouchableOpacity
         style={[styles.folderItem, isSelected && styles.folderItemSelected]}
-        onPress={() => setSelectedFolder(item.id)}
+        onPress={() => {
+          setSelectedFolder(item.id);
+          setShowFolderMenu(false);
+        }}
         onLongPress={() => {
           if (item.id !== 'all' && item.id !== 'favorites') {
             handleDeleteFolder(item.id);
           }
         }}
       >
-        <Text style={styles.folderIcon}>
-          {item.id === 'favorites' ? '⭐' : '📁'}
-        </Text>
-        <Text style={styles.folderName}>{item.name}</Text>
-        <Text style={styles.folderCount}>{noteCount}</Text>
+        <View style={styles.folderItemLeft}>
+          <Ionicons
+            name={item.id === 'favorites' ? 'star' : 'folder'}
+            size={16}
+            color={themeColors.textPrimary}
+          />
+          <Text style={styles.folderName}>{getFolderName(item)}</Text>
+        </View>
+        <View style={styles.folderItemRight}>
+          <Text style={styles.folderCount}>{getNoteCount(item.id)}</Text>
+          {isSelected && (
+            <Ionicons name="checkmark" size={16} color={themeColors.accent} />
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
 
+  const selectedFolderName = getFolderName(
+    folders.find((folder) => folder.id === selectedFolder) || {
+      id: 'all',
+      name: t('home.folderAll'),
+      createdAt: Date.now(),
+    }
+  );
+
   return (
-    <WoodBackground>
+    <WoodBackground variant={settings.appearance}>
       <SafeAreaView style={styles.container} edges={['top']}>
-        {/* 头部 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.headerIcon}>⚙️</Text>
+            <Ionicons name="settings-outline" size={22} color={themeColors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>全部便签</Text>
+          <Text style={styles.headerTitle}>{t('home.titleAll')}</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => setShowFolderModal(true)}>
-              <Text style={styles.headerIcon}>📁+</Text>
+            <TouchableOpacity onPress={() => setShowFolderMenu(true)}>
+              <Ionicons name="folder-open" size={22} color={themeColors.textPrimary} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => navigation.navigate('Editor', { noteId: null })}
             >
-              <Text style={styles.headerIcon}>✏️</Text>
+              <Ionicons name="create" size={22} color={themeColors.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* 搜索栏 */}
         <View style={styles.searchContainer}>
+          <Ionicons
+            name="search"
+            size={16}
+            color={themeColors.textPlaceholder}
+          />
           <TextInput
             style={styles.searchInput}
-            placeholder="搜索笔记..."
-            placeholderTextColor={COLORS.textPlaceholder}
+            placeholder={t('home.searchPlaceholder')}
+            placeholderTextColor={themeColors.textPlaceholder}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
 
-        {/* 文件夹列表 */}
-        <View style={styles.foldersContainer}>
-          <FlatList
-            horizontal
-            data={folders}
-            renderItem={renderFolderItem}
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.foldersList}
-          />
-        </View>
+        <TouchableOpacity
+          style={styles.folderSelector}
+          accessibilityLabel="folder-selector"
+          onPress={() => setShowFolderMenu(true)}
+        >
+          <View style={styles.folderSelectorLeft}>
+            <Ionicons name="folder" size={16} color={themeColors.textSecondary} />
+            <Text style={styles.folderSelectorText}>{selectedFolderName}</Text>
+          </View>
+          <View style={styles.folderSelectorRight}>
+            <Text style={styles.folderSelectorCount}>
+              {getNoteCount(selectedFolder)}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={16}
+              color={themeColors.textSecondary}
+            />
+          </View>
+        </TouchableOpacity>
 
-        {/* 笔记列表 */}
         <FlatList
           data={filteredNotes}
           renderItem={renderNoteItem}
@@ -183,26 +251,63 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           contentContainerStyle={styles.notesList}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>暂无笔记</Text>
-              <Text style={styles.emptyHint}>点击右上角 ✏️ 创建新笔记</Text>
+              <Text style={styles.emptyText}>{t('home.emptyTitle')}</Text>
+              <Text style={styles.emptyHint}>{t('home.emptyHint')}</Text>
             </View>
           }
         />
 
-        {/* 添加文件夹模态框 */}
         <Modal
-          visible={showFolderModal}
+          visible={showFolderMenu}
           transparent
           animationType="fade"
-          onRequestClose={() => setShowFolderModal(false)}
+          onRequestClose={() => setShowFolderMenu(false)}
+        >
+          <TouchableOpacity
+            style={styles.menuOverlay}
+            activeOpacity={1}
+            onPress={() => setShowFolderMenu(false)}
+          >
+            <View style={styles.menuContent}>
+              <View style={styles.menuHeader}>
+                <Text style={styles.menuTitle}>{t('home.titleAll')}</Text>
+                <View style={styles.menuActions}>
+                  <TouchableOpacity style={styles.menuActionChip}>
+                    <Text style={styles.menuActionText}>AI</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.menuActionChip}
+                    onPress={() => {
+                      setShowFolderMenu(false);
+                      setShowNewFolderModal(true);
+                    }}
+                  >
+                    <Ionicons name="add" size={16} color={themeColors.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <FlatList
+                data={folders}
+                renderItem={renderFolderItem}
+                keyExtractor={(item) => item.id}
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        <Modal
+          visible={showNewFolderModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowNewFolderModal(false)}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>新建文件夹</Text>
+              <Text style={styles.modalTitle}>{t('home.addFolderTitle')}</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="文件夹名称"
-                placeholderTextColor={COLORS.textPlaceholder}
+                placeholder={t('home.folderPlaceholder')}
+                placeholderTextColor={themeColors.textPlaceholder}
                 value={newFolderName}
                 onChangeText={setNewFolderName}
                 autoFocus
@@ -211,17 +316,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalButtonCancel]}
                   onPress={() => {
-                    setShowFolderModal(false);
+                    setShowNewFolderModal(false);
                     setNewFolderName('');
                   }}
                 >
-                  <Text style={styles.modalButtonText}>取消</Text>
+                  <Text style={styles.modalButtonText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalButtonConfirm]}
                   onPress={handleAddFolder}
                 >
-                  <Text style={styles.modalButtonText}>确定</Text>
+                  <Text style={styles.modalButtonText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -232,7 +337,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -243,79 +349,76 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
-  headerIcon: {
-    fontSize: 24,
-    marginHorizontal: SPACING.sm,
-  },
   headerTitle: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    flex: 1,
-    textAlign: 'center',
+    color: colors.textPrimary,
   },
   headerActions: {
     flexDirection: 'row',
+    gap: SPACING.md,
   },
   searchContainer: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
-  },
-  searchInput: {
-    backgroundColor: COLORS.paperWhite,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    backgroundColor: colors.paperWhite,
     borderRadius: BORDER_RADIUS.lg,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
-    shadowColor: COLORS.shadow,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
   },
-  foldersContainer: {
-    paddingBottom: SPACING.md,
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.medium,
+    color: colors.textPrimary,
   },
-  foldersList: {
-    paddingHorizontal: SPACING.lg,
-  },
-  folderItem: {
+  folderSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.paperWhite,
-    borderRadius: BORDER_RADIUS.md,
+    justifyContent: 'space-between',
+    backgroundColor: colors.paperWhite,
+    marginHorizontal: SPACING.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    marginRight: SPACING.sm,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: colors.woodLight,
   },
-  folderItemSelected: {
-    backgroundColor: COLORS.accent,
+  folderSelectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
-  folderIcon: {
-    fontSize: 16,
-    marginRight: SPACING.xs,
-  },
-  folderName: {
+  folderSelectorText: {
     fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
-    marginRight: SPACING.xs,
+    color: colors.textPrimary,
   },
-  folderCount: {
+  folderSelectorRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  folderSelectorCount: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   notesList: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xl,
+    paddingTop: SPACING.md,
   },
   noteCard: {
     marginBottom: SPACING.md,
+  },
+  noteCardContent: {
+    paddingVertical: SPACING.md,
   },
   noteHeader: {
     flexDirection: 'row',
@@ -325,20 +428,17 @@ const styles = StyleSheet.create({
   },
   noteDate: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
-  },
-  favoriteIcon: {
-    fontSize: 16,
+    color: colors.textSecondary,
   },
   noteTitle: {
     fontSize: FONT_SIZES.large,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.xs,
   },
   noteContent: {
     fontSize: FONT_SIZES.medium,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     lineHeight: 20,
   },
   emptyContainer: {
@@ -348,12 +448,85 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: FONT_SIZES.large,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginBottom: SPACING.sm,
   },
   emptyHint: {
     fontSize: FONT_SIZES.medium,
-    color: COLORS.textPlaceholder,
+    color: colors.textPlaceholder,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    paddingTop: 140,
+    paddingHorizontal: SPACING.lg,
+  },
+  menuContent: {
+    backgroundColor: colors.paperWhite,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  menuTitle: {
+    fontSize: FONT_SIZES.medium,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  menuActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  menuActionChip: {
+    backgroundColor: colors.paperYellow,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuActionText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  folderItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  folderItemSelected: {
+    backgroundColor: colors.paperYellow,
+  },
+  folderItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  folderName: {
+    fontSize: FONT_SIZES.medium,
+    color: colors.textPrimary,
+  },
+  folderItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  folderCount: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
   },
   modalOverlay: {
     flex: 1,
@@ -362,7 +535,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: COLORS.paperWhite,
+    backgroundColor: colors.paperWhite,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.xl,
     width: '80%',
@@ -371,17 +544,17 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.lg,
     textAlign: 'center',
   },
   modalInput: {
-    backgroundColor: COLORS.paperYellow,
+    backgroundColor: colors.paperYellow,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.lg,
   },
   modalButtons: {
@@ -396,14 +569,14 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.xs,
   },
   modalButtonCancel: {
-    backgroundColor: COLORS.textPlaceholder,
+    backgroundColor: colors.textPlaceholder,
   },
   modalButtonConfirm: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: colors.accent,
   },
   modalButtonText: {
     fontSize: FONT_SIZES.medium,
     fontWeight: '600',
-    color: COLORS.paperWhite,
+    color: colors.paperWhite,
   },
 });
