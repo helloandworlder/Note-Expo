@@ -3,10 +3,10 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { EditorScreen } from './src/screens/EditorScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { SharePreviewScreen } from './src/screens/SharePreviewScreen';
 import { LockScreen } from './src/components/common/LockScreen';
 
 const Stack = createNativeStackNavigator();
@@ -22,10 +22,9 @@ export default function App() {
   const checkLockStatus = async () => {
     try {
       const biometricEnabled = await AsyncStorage.getItem('biometricEnabled');
-      const password = await SecureStore.getItemAsync('appPassword');
 
       // 如果启用了生物识别或设置了密码，则显示锁屏
-      if (biometricEnabled === 'true' || password) {
+      if (biometricEnabled === 'true') {
         setIsLocked(true);
       } else {
         setIsLocked(false);
@@ -61,6 +60,7 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Editor" component={EditorScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="SharePreview" component={SharePreviewScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

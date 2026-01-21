@@ -1,10 +1,14 @@
+// 编辑器格式类型
+export type FormatType = 'plain' | 'rtf' | 'markdown';
+
 // 笔记类型定义
 export interface Note {
   id: string;
   title: string;
   content: string;
+  richContent?: string; // HTML 格式的富文本内容（RTF 模式使用）
   folderId: string | null;
-  formatType: 'plain' | 'rtf' | 'markdown';
+  formatType: FormatType;
   isFavorite: boolean;
   images: NoteImage[];
   createdAt: number;
@@ -28,9 +32,6 @@ export interface Folder {
   createdAt: number;
 }
 
-// 编辑器格式类型
-export type FormatType = 'plain' | 'rtf' | 'markdown';
-
 // 导出类型
 export type ExportType = 'image' | 'text' | 'pdf';
 
@@ -40,4 +41,27 @@ export interface ToolbarButton {
   icon: string;
   label: string;
   action: () => void;
+}
+
+// 外观主题
+export type AppearanceType = 'wood' | 'linen' | 'paper';
+
+// 字体大小档位
+export type FontSizeLevel = 'small' | 'medium' | 'large';
+
+// 排序方式
+export type NoteSortType =
+  | 'updated-desc'
+  | 'updated-asc'
+  | 'created-desc'
+  | 'created-asc';
+
+// 应用设置
+export interface AppSettings {
+  shareFooterEnabled: boolean;
+  shareFooterText: string;
+  defaultFormatType: FormatType;
+  fontSize: FontSizeLevel;
+  appearance: AppearanceType;
+  noteSort: NoteSortType;
 }

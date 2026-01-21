@@ -1,32 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { WoodBackground } from '../components/common/WoodBackground';
-import { PaperCard } from '../components/common/PaperCard';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { WoodBackground } from './WoodBackground';
+import { PaperCard } from './PaperCard';
+import {
+  FONT_SIZES,
+  SPACING,
+  BORDER_RADIUS,
+  ThemeColors,
+  getThemeColors,
+} from '../../constants/theme';
+import { useNoteStore } from '../../store/noteStore';
+import { t } from '../../utils/i18n';
 
 interface LockScreenProps {
   onUnlock: () => void;
 }
 
 export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
-  const [password, setPassword] = useState('');
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const appearance = useNoteStore((state) => state.settings.appearance);
+  const themeColors = useMemo(() => getThemeColors(appearance), [appearance]);
+  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
-  useEffect(() => {
-    checkAndAuthenticate();
-  }, []);
+  const authenticateWithBiometric = useCallback(async () => {
+    try {
+      if (isAuthenticating) return;
+      setIsAuthenticating(true);
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: t('lock.title'),
+        fallbackLabel: t('lock.faceId'),
+        cancelLabel: t('common.cancel'),
+      });
 
-  const checkAndAuthenticate = async () => {
+      if (result.success) {
+        onUnlock();
+      }
+    } catch (error) {
+      console.error('生物识别认证失败:', error);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, [isAuthenticating, onUnlock]);
+
+  const checkAndAuthenticate = useCallback(async () => {
     try {
       const biometric = await AsyncStorage.getItem('biometricEnabled');
       setBiometricEnabled(biometric === 'true');
@@ -37,68 +56,29 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     } catch (error) {
       console.error('检查认证设置失败:', error);
     }
-  };
+  }, [authenticateWithBiometric]);
 
-  const authenticateWithBiometric = async () => {
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: '验证身份以访问笔记',
-        fallbackLabel: '使用密码',
-        cancelLabel: '取消',
-      });
-
-      if (result.success) {
-        onUnlock();
-      }
-    } catch (error) {
-      console.error('生物识别认证失败:', error);
-    }
-  };
-
-  const handlePasswordSubmit = async () => {
-    try {
-      const storedPassword = await SecureStore.getItemAsync('appPassword');
-
-      if (storedPassword === password) {
-        onUnlock();
-      } else {
-        Alert.alert('错误', '密码不正确');
-        setPassword('');
-      }
-    } catch (error) {
-      Alert.alert('错误', '验证失败');
-    }
-  };
+  useEffect(() => {
+    checkAndAuthenticate();
+  }, [checkAndAuthenticate]);
 
   return (
-    <WoodBackground>
+    <WoodBackground variant={appearance}>
       <View style={styles.container}>
-        <PaperCard style={styles.card}>
+        <PaperCard style={styles.card} appearance={appearance}>
           <Text style={styles.icon}>🔒</Text>
-          <Text style={styles.title}>笔记已锁定</Text>
-          <Text style={styles.subtitle}>请验证身份以继续</Text>
+          <Text style={styles.title}>{t('lock.title')}</Text>
+          <Text style={styles.subtitle}>{t('lock.subtitle')}</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="输入密码"
-            placeholderTextColor={COLORS.textPlaceholder}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            onSubmitEditing={handlePasswordSubmit}
-          />
-
-          <TouchableOpacity style={styles.button} onPress={handlePasswordSubmit}>
-            <Text style={styles.buttonText}>解锁</Text>
-          </TouchableOpacity>
-
-          {biometricEnabled && (
+          {biometricEnabled ? (
             <TouchableOpacity
-              style={styles.biometricButton}
+              style={styles.button}
               onPress={authenticateWithBiometric}
             >
-              <Text style={styles.biometricButtonText}>使用 Face ID</Text>
+              <Text style={styles.buttonText}>{t('lock.faceId')}</Text>
             </TouchableOpacity>
+          ) : (
+            <Text style={styles.unavailableText}>{t('lock.unavailable')}</Text>
           )}
         </PaperCard>
       </View>
@@ -106,63 +86,48 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.xl,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    alignItems: 'center',
-  },
-  icon: {
-    fontSize: 64,
-    marginBottom: SPACING.lg,
-  },
-  title: {
-    fontSize: FONT_SIZES.heading,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xl,
-  },
-  input: {
-    width: '100%',
-    backgroundColor: COLORS.paperWhite,
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.lg,
-    textAlign: 'center',
-  },
-  button: {
-    width: '100%',
-    backgroundColor: COLORS.accent,
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  buttonText: {
-    fontSize: FONT_SIZES.medium,
-    fontWeight: '600',
-    color: COLORS.paperWhite,
-  },
-  biometricButton: {
-    paddingVertical: SPACING.sm,
-  },
-  biometricButtonText: {
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.accent,
-    textDecorationLine: 'underline',
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: SPACING.xl,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 400,
+      alignItems: 'center',
+    },
+    icon: {
+      fontSize: 64,
+      marginBottom: SPACING.lg,
+    },
+    title: {
+      fontSize: FONT_SIZES.heading,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+      marginBottom: SPACING.sm,
+    },
+    subtitle: {
+      fontSize: FONT_SIZES.medium,
+      color: colors.textSecondary,
+      marginBottom: SPACING.xl,
+    },
+    button: {
+      width: '100%',
+      backgroundColor: colors.accent,
+      borderRadius: BORDER_RADIUS.md,
+      paddingVertical: SPACING.md,
+      alignItems: 'center',
+    },
+    buttonText: {
+      fontSize: FONT_SIZES.medium,
+      fontWeight: '600',
+      color: colors.paperWhite,
+    },
+    unavailableText: {
+      fontSize: FONT_SIZES.medium,
+      color: colors.textSecondary,
+    },
+  });

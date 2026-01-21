@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,104 +8,272 @@ import {
   ScrollView,
   Modal,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { captureRef } from 'react-native-view-shot';
+import * as MediaLibrary from 'expo-media-library';
+import * as ImageManipulator from 'expo-image-manipulator';
 import Markdown from 'react-native-markdown-display';
+import { actions } from 'react-native-pell-rich-editor';
 import { WoodBackground } from '../components/common/WoodBackground';
 import { PaperCard } from '../components/common/PaperCard';
+import { LinedPaper } from '../components/common/LinedPaper';
+import {
+  RichTextEditor,
+  RichTextEditorHandle,
+} from '../components/editor/RichTextEditor';
+import { ImageWithCaption } from '../components/editor/ImageWithCaption';
+import { useUndoRedo } from '../hooks/useUndoRedo';
 import { useNoteStore } from '../store/noteStore';
 import {
-  COLORS,
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
+  FONT_SCALE,
   FORMAT_OPTIONS,
+  ThemeColors,
+  getThemeColors,
 } from '../constants/theme';
 import { FormatType, NoteImage } from '../types';
+import { getPlainText, stripHtml } from '../utils/contentConverter';
+import { formatDateTime, t } from '../utils/i18n';
 
 interface EditorScreenProps {
   navigation: any;
   route: any;
 }
 
-export const EditorScreen: React.FC<EditorScreenProps> = ({
-  navigation,
-  route,
-}) => {
+const TOOLBAR_ITEMS = [
+  { key: 'title', icon: 'format-size', labelKey: 'toolbar.title' },
+  { key: 'center', icon: 'format-align-center', labelKey: 'toolbar.center' },
+  { key: 'list', icon: 'format-list-bulleted', labelKey: 'toolbar.list' },
+  { key: 'bold', icon: 'format-bold', labelKey: 'toolbar.bold' },
+  { key: 'quote', icon: 'format-quote-open', labelKey: 'toolbar.quote' },
+  { key: 'todo', icon: 'format-list-checks', labelKey: 'toolbar.todo' },
+];
+
+export const EditorScreen: React.FC<EditorScreenProps> = ({ navigation, route }) => {
   const { noteId } = route.params || {};
-  const { notes, addNote, updateNote, deleteNote, toggleFavorite, folders } =
-    useNoteStore();
+  const {
+    notes,
+    addNote,
+    updateNote,
+    deleteNote,
+    toggleFavorite,
+    folders,
+    settings,
+  } = useNoteStore();
 
-  const existingNote = noteId ? notes.find((n) => n.id === noteId) : null;
+  const existingNote = noteId ? notes.find((note) => note.id === noteId) : null;
+  const [currentNoteId, setCurrentNoteId] = useState<string | null>(
+    noteId || null
+  );
+  const activeNote = useMemo(
+    () => (currentNoteId ? notes.find((note) => note.id === currentNoteId) : null),
+    [currentNoteId, notes]
+  );
 
+  const contentHistory = useUndoRedo(existingNote?.content || '');
   const [title, setTitle] = useState(existingNote?.title || '');
-  const [content, setContent] = useState(existingNote?.content || '');
+  const [richContent, setRichContent] = useState(existingNote?.richContent || '');
   const [formatType, setFormatType] = useState<FormatType>(
-    existingNote?.formatType || 'plain'
+    existingNote?.formatType || settings.defaultFormatType
   );
-  const [images, setImages] = useState<NoteImage[]>(
-    existingNote?.images || []
-  );
-  const [isFavorite, setIsFavorite] = useState(
-    existingNote?.isFavorite || false
-  );
-  const [folderId, setFolderId] = useState<string | null>(
-    existingNote?.folderId || null
-  );
+  const [images, setImages] = useState<NoteImage[]>(existingNote?.images || []);
+  const [isFavorite, setIsFavorite] = useState(existingNote?.isFavorite || false);
+  const [folderId] = useState<string | null>(existingNote?.folderId || null);
 
   const [showFormatMenu, setShowFormatMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [showFolderMenu, setShowFolderMenu] = useState(false);
-  const [showToolbar, setShowToolbar] = useState(false);
+  const [showImageActions, setShowImageActions] = useState(false);
+  const [showImagePreview, setShowImagePreview] = useState(false);
+  const [activeImage, setActiveImage] = useState<NoteImage | null>(null);
 
-  const contentRef = React.useRef<View>(null);
+  const richEditorRef = useRef<RichTextEditorHandle>(null);
+  const autoSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasMountedRef = useRef(false);
 
   useEffect(() => {
-    navigation.setOptions({
-      headerShown: false,
-    });
-  }, []);
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
-  const handleSave = () => {
-    if (noteId) {
-      updateNote(noteId, {
-        title,
-        content,
-        formatType,
-        images,
-        isFavorite,
-        folderId,
-      });
+
+  const plainText = useMemo(
+    () => getPlainText(contentHistory.value, richContent, formatType),
+    [contentHistory.value, richContent, formatType]
+  );
+
+  const wordCount = useMemo(
+    () => plainText.replace(/\s+/g, '').length,
+    [plainText]
+  );
+
+  const fontScale = FONT_SCALE[settings.fontSize];
+  const contentFontSize = Math.round(FONT_SIZES.medium * fontScale);
+  const titleFontSize = Math.round(FONT_SIZES.heading * fontScale);
+  const lineHeight = Math.round(28 * fontScale);
+  const themeColors = useMemo(
+    () => getThemeColors(settings.appearance),
+    [settings.appearance]
+  );
+  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
+  const markdownStyles = useMemo(
+    () =>
+      ({
+      body: {
+        fontSize: contentFontSize,
+        color: themeColors.textPrimary,
+        lineHeight: lineHeight,
+      },
+      heading1: {
+        fontSize: Math.round(contentFontSize * 1.5),
+        fontWeight: 'bold',
+        color: themeColors.textPrimary,
+        marginTop: SPACING.md,
+        marginBottom: SPACING.sm,
+      },
+      heading2: {
+        fontSize: Math.round(contentFontSize * 1.3),
+        fontWeight: 'bold',
+        color: themeColors.textPrimary,
+        marginTop: SPACING.md,
+        marginBottom: SPACING.sm,
+      },
+      strong: {
+        fontWeight: 'bold',
+      },
+      em: {
+        fontStyle: 'italic',
+      },
+      blockquote: {
+        backgroundColor: themeColors.paperWhite,
+        borderLeftWidth: 4,
+        borderLeftColor: themeColors.accent,
+        paddingLeft: SPACING.md,
+        paddingVertical: SPACING.sm,
+        marginVertical: SPACING.sm,
+      },
+      list_item: {
+        marginVertical: SPACING.xs,
+      },
+    }) as any,
+    [contentFontSize, lineHeight, themeColors]
+  );
+
+  const folderName = useMemo(() => {
+    if (!folderId) return t('home.folderAll');
+    const folder = folders.find((item) => item.id === folderId);
+    if (!folder) return t('home.folderAll');
+    if (folder.id === 'favorites') return t('home.folderFavorites');
+    if (folder.id === 'all') return t('home.folderAll');
+    return folder.name;
+  }, [folderId, folders]);
+
+  const currentFormatLabel = useMemo(() => {
+    const option = FORMAT_OPTIONS.find((item) => item.value === formatType);
+    return option ? t(option.labelKey) : t('format.plain');
+  }, [formatType]);
+
+  const resolveNoteData = useCallback(() => {
+    const noteData: any = {
+      title,
+      formatType,
+      images,
+      isFavorite,
+      folderId,
+    };
+
+    if (formatType === 'rtf') {
+      noteData.richContent = richContent;
+      noteData.content = stripHtml(richContent);
     } else {
-      addNote({
-        title,
-        content,
-        formatType,
-        images,
-        isFavorite,
-        folderId,
-      });
+      noteData.content = contentHistory.value;
+      noteData.richContent = '';
     }
-    navigation.goBack();
-  };
+
+    return noteData;
+  }, [
+    title,
+    formatType,
+    images,
+    isFavorite,
+    folderId,
+    richContent,
+    contentHistory.value,
+  ]);
+
+  const persistNote = useCallback(
+    (shouldNavigate: boolean) => {
+      const shouldSave =
+        title.trim() || plainText.trim() || images.length > 0 || isFavorite;
+
+      if (!shouldSave) {
+        if (shouldNavigate) navigation.goBack();
+        return;
+      }
+
+      const noteData = resolveNoteData();
+      if (currentNoteId) {
+        updateNote(currentNoteId, noteData);
+      } else {
+        const newId = addNote(noteData);
+        setCurrentNoteId(newId);
+      }
+
+      if (shouldNavigate) {
+        navigation.goBack();
+      }
+    },
+    [
+      title,
+      plainText,
+      images,
+      isFavorite,
+      resolveNoteData,
+      currentNoteId,
+      updateNote,
+      addNote,
+      navigation,
+    ]
+  );
+
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+
+    if (autoSaveTimeout.current) {
+      clearTimeout(autoSaveTimeout.current);
+    }
+
+    autoSaveTimeout.current = setTimeout(() => {
+      persistNote(false);
+    }, 800);
+
+    return () => {
+      if (autoSaveTimeout.current) {
+        clearTimeout(autoSaveTimeout.current);
+      }
+    };
+  }, [persistNote]);
 
   const handleDelete = () => {
-    Alert.alert('删除笔记', '确定要删除这条笔记吗？', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('editor.deleteTitle'), t('editor.deleteMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '删除',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
-          if (noteId) {
-            deleteNote(noteId);
+          if (currentNoteId) {
+            deleteNote(currentNoteId);
           }
           navigation.goBack();
         },
@@ -114,53 +282,122 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   };
 
   const handleToggleFavorite = () => {
-    setIsFavorite(!isFavorite);
-    if (noteId) {
-      toggleFavorite(noteId);
+    setIsFavorite((prev) => !prev);
+    if (currentNoteId) {
+      toggleFavorite(currentNoteId);
     }
   };
 
   const handlePickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'images',
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.85,
     });
 
     if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
       const newImage: NoteImage = {
         id: Date.now().toString(),
-        uri: result.assets[0].uri,
-        width: result.assets[0].width,
-        height: result.assets[0].height,
+        uri: asset.uri,
+        width: asset.width,
+        height: asset.height,
       };
-      setImages([...images, newImage]);
+      setImages((prev) => [...prev, newImage]);
+    }
+  };
+
+  const handleUpdateImage = (imageId: string, updates: Partial<NoteImage>) => {
+    setImages((prev) =>
+      prev.map((image) =>
+        image.id === imageId ? { ...image, ...updates } : image
+      )
+    );
+    if (activeImage?.id === imageId) {
+      setActiveImage({ ...activeImage, ...updates });
     }
   };
 
   const handleRemoveImage = (imageId: string) => {
-    setImages(images.filter((img) => img.id !== imageId));
+    setImages((prev) => prev.filter((image) => image.id !== imageId));
+  };
+
+  const handleCropImage = async () => {
+    if (!activeImage) return;
+    try {
+      const width = activeImage.width || 0;
+      const height = activeImage.height || 0;
+      if (!width || !height) return;
+
+      const size = Math.min(width, height);
+      const originX = Math.max(0, Math.floor((width - size) / 2));
+      const originY = Math.max(0, Math.floor((height - size) / 2));
+
+      const result = await ImageManipulator.manipulateAsync(
+        activeImage.uri,
+        [
+          {
+            crop: {
+              originX,
+              originY,
+              width: size,
+              height: size,
+            },
+          },
+        ],
+        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      handleUpdateImage(activeImage.id, {
+        uri: result.uri,
+        width: size,
+        height: size,
+      });
+    } catch (error) {
+      console.error('裁剪图片失败:', error);
+      Alert.alert(t('common.error'), t('editor.imageSaveError'));
+    }
+  };
+
+  const handleSaveImageToAlbum = async () => {
+    if (!activeImage) return;
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(t('common.error'), t('editor.imagePermission'));
+        return;
+      }
+
+      await MediaLibrary.createAssetAsync(activeImage.uri);
+      Alert.alert(t('common.success'), t('editor.imageSaveSuccess'));
+    } catch (error) {
+      console.error('保存图片失败:', error);
+      Alert.alert(t('common.error'), t('editor.imageSaveError'));
+    }
   };
 
   const handleExportText = async () => {
-    await Clipboard.setStringAsync(content);
-    Alert.alert('成功', '文字已复制到剪贴板');
+    await Clipboard.setStringAsync(plainText);
+    Alert.alert(t('common.success'), t('editor.copySuccess'));
     setShowExportMenu(false);
   };
 
   const handleExportImage = async () => {
-    try {
-      if (contentRef.current) {
-        const uri = await captureRef(contentRef, {
-          format: 'png',
-          quality: 1,
-        });
-        await Sharing.shareAsync(uri);
-      }
-    } catch (error) {
-      Alert.alert('错误', '导出图片失败');
-    }
     setShowExportMenu(false);
+    navigation.navigate('SharePreview', {
+      note: {
+        id: currentNoteId || Date.now().toString(),
+        title,
+        content: contentHistory.value,
+        richContent,
+        formatType,
+        images,
+        folderId,
+        isFavorite,
+        createdAt: existingNote?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+      },
+    });
   };
 
   const handleExportPDF = async () => {
@@ -170,62 +407,148 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
           <head>
             <style>
               body { font-family: Arial, sans-serif; padding: 20px; }
-              h1 { color: #2C2416; }
-              p { color: #6B5D4F; line-height: 1.6; }
+              h1 { color: ${themeColors.textPrimary}; }
+              p { color: ${themeColors.textSecondary}; line-height: 1.6; }
             </style>
           </head>
           <body>
-            <h1>${title || '无标题'}</h1>
-            <p>${content.replace(/\n/g, '<br>')}</p>
+            <h1>${title || t('note.untitled')}</h1>
+            <p>${plainText.replace(/\n/g, '<br>')}</p>
           </body>
         </html>
       `;
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri);
     } catch (error) {
-      Alert.alert('错误', '导出PDF失败');
+      console.error('导出 PDF 失败:', error);
+      Alert.alert(t('common.error'), t('editor.exportPdfError'));
     }
     setShowExportMenu(false);
   };
 
-  const insertFormatting = (format: string) => {
-    let newContent = content;
-    switch (format) {
-      case 'heading':
-        newContent += '\n# 标题\n';
-        break;
-      case 'bold':
-        newContent += '**粗体**';
-        break;
-      case 'list':
-        newContent += '\n- 列表项\n';
-        break;
-      case 'quote':
-        newContent += '\n> 引用\n';
-        break;
-      case 'todo':
-        newContent += '\n- [ ] 待办事项\n';
+  const handleUndo = () => {
+    if (formatType === 'rtf') {
+      richEditorRef.current?.undo();
+    } else {
+      contentHistory.undo();
+    }
+  };
+
+  const handleRedo = () => {
+    if (formatType === 'rtf') {
+      richEditorRef.current?.redo();
+    } else {
+      contentHistory.redo();
+    }
+  };
+
+  const handleToolbarAction = (key: string) => {
+    if (formatType === 'rtf') {
+      const actionMap: Record<string, actions> = {
+        title: actions.heading1,
+        center: actions.alignCenter,
+        list: actions.insertBulletsList,
+        bold: actions.setBold,
+        quote: actions.blockquote,
+        todo: actions.checkboxList,
+      };
+      const action = actionMap[key];
+      if (action) richEditorRef.current?.applyAction(action);
+      return;
+    }
+
+    const appendLine = (text: string) => {
+      const current = contentHistory.value;
+      const next = current ? `${current}\n${text}` : text;
+      contentHistory.set(next);
+    };
+
+    const labelMap = {
+      title: t('toolbar.title'),
+      center: t('toolbar.center'),
+      list: t('toolbar.list'),
+      bold: t('toolbar.bold'),
+      quote: t('toolbar.quote'),
+      todo: t('toolbar.todo'),
+    };
+
+    switch (key) {
+      case 'title':
+        appendLine(
+          formatType === 'markdown'
+            ? `# ${labelMap.title}`
+            : labelMap.title
+        );
         break;
       case 'center':
-        newContent += '\n<center>居中文本</center>\n';
+        appendLine(
+          formatType === 'markdown'
+            ? `<div align="center">${labelMap.center}</div>`
+            : labelMap.center
+        );
+        break;
+      case 'list':
+        appendLine(
+          formatType === 'markdown'
+            ? `- ${labelMap.list}`
+            : `• ${labelMap.list}`
+        );
+        break;
+      case 'bold':
+        appendLine(
+          formatType === 'markdown'
+            ? `**${labelMap.bold}**`
+            : labelMap.bold
+        );
+        break;
+      case 'quote':
+        appendLine(
+          formatType === 'markdown'
+            ? `> ${labelMap.quote}`
+            : labelMap.quote
+        );
+        break;
+      case 'todo':
+        appendLine(
+          formatType === 'markdown'
+            ? `- [ ] ${labelMap.todo}`
+            : `☐ ${labelMap.todo}`
+        );
+        break;
+      default:
         break;
     }
-    setContent(newContent);
   };
 
   const renderContent = () => {
-    if (formatType === 'markdown') {
+    if (formatType === 'rtf') {
       return (
-        <Markdown style={markdownStyles}>{content || '开始输入...'}</Markdown>
+        <RichTextEditor
+          ref={richEditorRef}
+          initialContent={richContent}
+          onChange={setRichContent}
+          style={styles.richEditor}
+          fontSize={contentFontSize}
+          placeholder={t('editor.contentPlaceholder')}
+          appearance={settings.appearance}
+        />
       );
     }
+
     return (
       <TextInput
-        style={styles.contentInput}
-        value={content}
-        onChangeText={setContent}
-        placeholder="开始输入..."
-        placeholderTextColor={COLORS.textPlaceholder}
+        style={[
+          styles.contentInput,
+          { fontSize: contentFontSize, lineHeight: lineHeight },
+        ]}
+        value={contentHistory.value}
+        onChangeText={contentHistory.set}
+        placeholder={
+          formatType === 'markdown'
+            ? t('editor.markdownPlaceholder')
+            : t('editor.contentPlaceholder')
+        }
+        placeholderTextColor={themeColors.textPlaceholder}
         multiline
         textAlignVertical="top"
       />
@@ -233,145 +556,177 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   };
 
   return (
-    <WoodBackground>
+    <WoodBackground variant={settings.appearance}>
       <SafeAreaView style={styles.container} edges={['top']}>
         <KeyboardAvoidingView
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {/* 头部工具栏 */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={styles.headerIcon}>←</Text>
-            </TouchableOpacity>
-
-            <View style={styles.headerCenter}>
-              <TouchableOpacity onPress={() => setShowFormatMenu(true)}>
-                <Text style={styles.formatButton}>
-                  {FORMAT_OPTIONS.find((opt) => opt.value === formatType)
-                    ?.label || '无'}
-                </Text>
+            <View style={styles.headerLeft}>
+              <TouchableOpacity onPress={() => navigation.goBack()}>
+                <Ionicons name="chevron-back" size={22} color={themeColors.textPrimary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleUndo}>
+                <Ionicons
+                  name="arrow-undo"
+                  size={20}
+                  color={
+                    formatType === 'rtf' || contentHistory.canUndo
+                      ? themeColors.textPrimary
+                      : themeColors.textPlaceholder
+                  }
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleRedo}>
+                <Ionicons
+                  name="arrow-redo"
+                  size={20}
+                  color={
+                    formatType === 'rtf' || contentHistory.canRedo
+                      ? themeColors.textPrimary
+                      : themeColors.textPlaceholder
+                  }
+                />
               </TouchableOpacity>
             </View>
-
             <View style={styles.headerRight}>
-              <TouchableOpacity onPress={handleToggleFavorite}>
-                <Text style={styles.headerIcon}>
-                  {isFavorite ? '⭐' : '☆'}
-                </Text>
+              <TouchableOpacity style={styles.aiChip}>
+                <Text style={styles.aiText}>AI</Text>
               </TouchableOpacity>
-              {noteId && (
-                <TouchableOpacity onPress={handleDelete}>
-                  <Text style={styles.headerIcon}>🗑️</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={() => setShowExportMenu(true)}>
-                <Text style={styles.headerIcon}>↗️</Text>
+              <TouchableOpacity onPress={handlePickImage}>
+                <Ionicons name="image" size={22} color={themeColors.textPrimary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => persistNote(true)}
+                accessibilityLabel="save-note"
+              >
+                <Ionicons name="checkmark" size={24} color={themeColors.textPrimary} />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* 编辑区域 */}
-          <ScrollView style={styles.editorContainer}>
-            <View ref={contentRef} style={styles.editorContent}>
-              <PaperCard>
-                <TextInput
-                  style={styles.titleInput}
-                  value={title}
-                  onChangeText={setTitle}
-                  placeholder="标题"
-                  placeholderTextColor={COLORS.textPlaceholder}
+          <View style={styles.metaRow}>
+            <View style={styles.metaLeft}>
+              <View style={styles.folderChip}>
+                <Ionicons name="folder" size={12} color={themeColors.textSecondary} />
+                <Text style={styles.folderChipText}>{folderName}</Text>
+              </View>
+              <Text style={styles.metaText}>
+                {t('editor.metaDate', {
+                  time: formatDateTime(activeNote?.updatedAt || Date.now()),
+                })}
+              </Text>
+              <Text style={styles.metaDivider}>|</Text>
+              <Text style={styles.metaText}>
+                {t('editor.wordCount', { count: wordCount })}
+              </Text>
+            </View>
+            <View style={styles.metaRight}>
+              <TouchableOpacity
+                onPress={handleToggleFavorite}
+                accessibilityLabel="toggle-favorite"
+              >
+                <Ionicons
+                  name={isFavorite ? 'star' : 'star-outline'}
+                  size={18}
+                  color={isFavorite ? themeColors.favorite : themeColors.textSecondary}
                 />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.formatChip}
+                onPress={() => setShowFormatMenu(true)}
+              >
+                <Text style={styles.formatChipText}>{currentFormatLabel}</Text>
+                <Ionicons
+                  name="chevron-down"
+                  size={12}
+                  color={themeColors.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowExportMenu(true)}>
+                <Ionicons name="share-outline" size={18} color={themeColors.textSecondary} />
+              </TouchableOpacity>
+              {currentNoteId && (
+                <TouchableOpacity onPress={handleDelete}>
+                  <Ionicons name="trash" size={18} color={themeColors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
-                {renderContent()}
+          <ScrollView style={styles.editorContainer}>
+            <View style={styles.editorContent}>
+              <PaperCard
+                style={styles.paperCard}
+                contentStyle={styles.paperContent}
+                appearance={settings.appearance}
+              >
+                <LinedPaper
+                  lineHeight={lineHeight}
+                  contentStyle={styles.linedContent}
+                  appearance={settings.appearance}
+                >
+                  <TextInput
+                    style={[
+                      styles.titleInput,
+                      { fontSize: titleFontSize, lineHeight: lineHeight },
+                    ]}
+                    value={title}
+                    onChangeText={setTitle}
+                    placeholder={t('editor.titlePlaceholder')}
+                    placeholderTextColor={themeColors.textPlaceholder}
+                  />
 
-                {/* 图片列表 */}
-                {images.map((image) => (
-                  <View key={image.id} style={styles.imageContainer}>
-                    <Image
-                      source={{ uri: image.uri }}
-                      style={styles.image}
-                      resizeMode="contain"
+                  {renderContent()}
+
+                  {formatType === 'markdown' && contentHistory.value ? (
+                    <View style={styles.previewContainer}>
+                      <Text style={styles.previewLabel}>{t('editor.previewLabel')}</Text>
+                      <Markdown style={markdownStyles}>{contentHistory.value}</Markdown>
+                    </View>
+                  ) : null}
+
+                  {images.map((image) => (
+                    <ImageWithCaption
+                      key={image.id}
+                      image={image}
+                      onCaptionChange={(caption) =>
+                        handleUpdateImage(image.id, { caption })
+                      }
+                      onOptionsPress={() => {
+                        setActiveImage(image);
+                        setShowImageActions(true);
+                      }}
+                      onPressImage={() => {
+                        setActiveImage(image);
+                        setShowImagePreview(true);
+                      }}
+                      appearance={settings.appearance}
                     />
-                    <TouchableOpacity
-                      style={styles.imageRemove}
-                      onPress={() => handleRemoveImage(image.id)}
-                    >
-                      <Text style={styles.imageRemoveText}>×</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                  ))}
+                </LinedPaper>
               </PaperCard>
             </View>
           </ScrollView>
 
-          {/* 底部工具栏 */}
           <View style={styles.bottomToolbar}>
-            <TouchableOpacity
-              style={styles.toolbarButton}
-              onPress={() => setShowToolbar(!showToolbar)}
-            >
-              <Text style={styles.toolbarButtonText}>AI</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.toolbarButton}
-              onPress={handlePickImage}
-            >
-              <Text style={styles.toolbarButtonText}>📷</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.toolbarButton}
-              onPress={handleSave}
-            >
-              <Text style={styles.toolbarButtonText}>✓</Text>
-            </TouchableOpacity>
+            {TOOLBAR_ITEMS.map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.toolbarButton}
+                onPress={() => handleToolbarAction(item.key)}
+              >
+                <MaterialCommunityIcons
+                  name={item.icon as any}
+                  size={18}
+                  color={themeColors.toolbarIcon}
+                />
+                <Text style={styles.toolbarLabel}>{t(item.labelKey)}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {/* 快捷工具栏 */}
-          {showToolbar && (
-            <View style={styles.quickToolbar}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => insertFormatting('heading')}
-                >
-                  <Text style={styles.quickButtonText}>标题</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => insertFormatting('center')}
-                >
-                  <Text style={styles.quickButtonText}>居中</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => insertFormatting('list')}
-                >
-                  <Text style={styles.quickButtonText}>列表</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => insertFormatting('bold')}
-                >
-                  <Text style={styles.quickButtonText}>粗体</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => insertFormatting('quote')}
-                >
-                  <Text style={styles.quickButtonText}>引用</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickButton}
-                  onPress={() => insertFormatting('todo')}
-                >
-                  <Text style={styles.quickButtonText}>待办</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          )}
-
-          {/* 格式选择模态框 */}
           <Modal
             visible={showFormatMenu}
             transparent
@@ -387,18 +742,17 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                 {FORMAT_OPTIONS.map((option) => (
                   <TouchableOpacity
                     key={option.value}
-                    style={[
-                      styles.menuItem,
-                      formatType === option.value && styles.menuItemSelected,
-                    ]}
+                    style={styles.menuItem}
                     onPress={() => {
                       setFormatType(option.value as FormatType);
                       setShowFormatMenu(false);
                     }}
                   >
-                    <Text style={styles.menuItemText}>{option.label}</Text>
+                    <Text style={styles.menuItemText}>
+                      {t(option.labelKey)}
+                    </Text>
                     {formatType === option.value && (
-                      <Text style={styles.checkmark}>✓</Text>
+                      <Ionicons name="checkmark" size={18} color={themeColors.textPrimary} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -406,7 +760,6 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
             </TouchableOpacity>
           </Modal>
 
-          {/* 导出选项模态框 */}
           <Modal
             visible={showExportMenu}
             transparent
@@ -419,38 +772,107 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
               onPress={() => setShowExportMenu(false)}
             >
               <View style={styles.menuContent}>
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={handleExportText}
-                >
-                  <Text style={styles.menuItemText}>复制文字</Text>
+                <Text style={styles.menuTitle}>{t('editor.exportTitle')}</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={handleExportText}>
+                  <Text style={styles.menuItemText}>{t('editor.exportCopy')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={handleExportImage}
-                >
-                  <Text style={styles.menuItemText}>分享新浪长图微博</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={handleExportImage}>
+                  <Text style={styles.menuItemText}>{t('editor.exportWeibo')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={handleExportImage}
-                >
-                  <Text style={styles.menuItemText}>以图片形式分享</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={handleExportImage}>
+                  <Text style={styles.menuItemText}>{t('editor.exportImage')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={handleExportPDF}
-                >
-                  <Text style={styles.menuItemText}>发送邮件</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={handleExportPDF}>
+                  <Text style={styles.menuItemText}>{t('editor.exportMail')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={handleExportPDF}
-                >
-                  <Text style={styles.menuItemText}>输入到我的印象</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={handleExportPDF}>
+                  <Text style={styles.menuItemText}>{t('editor.exportKnowledge')}</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
+          </Modal>
+
+          <Modal
+            visible={showImageActions}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowImageActions(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => setShowImageActions(false)}
+            >
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>{t('editor.imageActions')}</Text>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    handleCropImage();
+                    setShowImageActions(false);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>{t('editor.imageCrop')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (activeImage) {
+                      handleRemoveImage(activeImage.id);
+                    }
+                    setShowImageActions(false);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>{t('editor.imageDelete')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    handleSaveImageToAlbum();
+                    setShowImageActions(false);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>{t('editor.imageSave')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowImageActions(false);
+                    setShowImagePreview(true);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>{t('editor.imagePreview')}</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+
+          <Modal
+            visible={showImagePreview}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowImagePreview(false)}
+          >
+            <View style={styles.previewOverlay}>
+              <TouchableOpacity
+                style={styles.previewClose}
+                onPress={() => setShowImagePreview(false)}
+              >
+                <Ionicons name="close" size={24} color={themeColors.paperWhite} />
+              </TouchableOpacity>
+              {activeImage && (
+                <View style={styles.previewImageContainer}>
+                  <Image
+                    source={{ uri: activeImage.uri }}
+                    style={styles.previewImage}
+                    resizeMode="contain"
+                  />
+                  {activeImage.caption ? (
+                    <Text style={styles.previewCaption}>{activeImage.caption}</Text>
+                  ) : null}
+                </View>
+              )}
+            </View>
           </Modal>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -458,7 +880,8 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -469,24 +892,85 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
-  headerIcon: {
-    fontSize: 24,
-    marginHorizontal: SPACING.xs,
-  },
-  headerCenter: {
-    flex: 1,
+  headerLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  formatButton: {
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    backgroundColor: COLORS.paperWhite,
-    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.md,
   },
   headerRight: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  aiChip: {
+    backgroundColor: colors.paperYellow,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.woodLight,
+  },
+  aiText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  metaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  folderChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: colors.paperWhite,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.woodLight,
+  },
+  folderChipText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+  },
+  metaText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+  },
+  metaDivider: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textPlaceholder,
+  },
+  metaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  formatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: colors.paperWhite,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.woodLight,
+  },
+  formatChipText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
   },
   editorContainer: {
     flex: 1,
@@ -494,93 +978,80 @@ const styles = StyleSheet.create({
   editorContent: {
     padding: SPACING.lg,
   },
+  paperCard: {
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  paperContent: {
+    padding: 0,
+  },
+  linedContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
+  },
   titleInput: {
-    fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.md,
     padding: 0,
   },
   contentInput: {
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
-    lineHeight: 24,
+    color: colors.textPrimary,
     minHeight: 200,
     padding: 0,
   },
-  imageContainer: {
-    marginTop: SPACING.md,
-    position: 'relative',
+  richEditor: {
+    minHeight: 280,
   },
-  image: {
-    width: '100%',
-    height: 200,
-    borderRadius: BORDER_RADIUS.md,
+  previewContainer: {
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.paperLine,
   },
-  imageRemove: {
-    position: 'absolute',
-    top: SPACING.sm,
-    right: SPACING.sm,
-    backgroundColor: COLORS.delete,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  imageRemoveText: {
-    color: COLORS.paperWhite,
-    fontSize: 20,
-    fontWeight: 'bold',
+  previewLabel: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    marginBottom: SPACING.sm,
+    fontWeight: '600',
   },
   bottomToolbar: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    backgroundColor: COLORS.woodLight,
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: colors.toolbarBackground,
     borderTopWidth: 1,
-    borderTopColor: COLORS.woodDark,
+    borderTopColor: colors.woodDark,
   },
   toolbarButton: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.paperWhite,
-    borderRadius: BORDER_RADIUS.md,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
   },
-  toolbarButtonText: {
-    fontSize: FONT_SIZES.large,
-  },
-  quickToolbar: {
-    backgroundColor: COLORS.paperWhite,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.woodDark,
-  },
-  quickButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.accent,
-    borderRadius: BORDER_RADIUS.sm,
-    marginRight: SPACING.sm,
-  },
-  quickButtonText: {
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.paperWhite,
-    fontWeight: '600',
+  toolbarLabel: {
+    fontSize: 10,
+    color: colors.toolbarIcon,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
   },
   menuContent: {
-    backgroundColor: COLORS.paperWhite,
+    backgroundColor: colors.paperWhite,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
-    minWidth: 200,
+    minWidth: 220,
+  },
+  menuTitle: {
+    fontSize: FONT_SIZES.medium,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: SPACING.sm,
+    textAlign: 'center',
   },
   menuItem: {
     flexDirection: 'row',
@@ -589,55 +1060,37 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
   },
-  menuItemSelected: {
-    backgroundColor: COLORS.accent,
-    borderRadius: BORDER_RADIUS.md,
-  },
   menuItemText: {
     fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
-  checkmark: {
-    fontSize: FONT_SIZES.large,
-    color: COLORS.textPrimary,
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  previewClose: {
+    position: 'absolute',
+    top: 60,
+    right: 24,
+    zIndex: 2,
+  },
+  previewImageContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  previewImage: {
+    width: '100%',
+    height: 320,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: colors.woodDark,
+  },
+  previewCaption: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZES.medium,
+    color: colors.paperWhite,
+    textAlign: 'center',
   },
 });
-
-const markdownStyles = {
-  body: {
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
-    lineHeight: 24,
-  },
-  heading1: {
-    fontSize: FONT_SIZES.heading,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  heading2: {
-    fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  strong: {
-    fontWeight: 'bold',
-  },
-  em: {
-    fontStyle: 'italic',
-  },
-  blockquote: {
-    backgroundColor: COLORS.paperWhite,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.accent,
-    paddingLeft: SPACING.md,
-    paddingVertical: SPACING.sm,
-    marginVertical: SPACING.sm,
-  },
-  list_item: {
-    marginVertical: SPACING.xs,
-  },
-};

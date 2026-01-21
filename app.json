@@ -44,7 +44,8 @@
         {
           "faceIDPermission": "使用 Face ID 保护您的笔记安全"
         }
-      ]
+      ],
+      "expo-localization"
     ]
   }
 }

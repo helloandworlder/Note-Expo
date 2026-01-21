@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,31 +10,71 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WoodBackground } from '../components/common/WoodBackground';
 import { PaperCard } from '../components/common/PaperCard';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../constants/theme';
+import {
+  FONT_SIZES,
+  SPACING,
+  BORDER_RADIUS,
+  ThemeColors,
+  getThemeColors,
+} from '../constants/theme';
+import { useNoteStore } from '../store/noteStore';
+import { AppSettings } from '../types';
+import { t } from '../utils/i18n';
 
 interface SettingsScreenProps {
   navigation: any;
 }
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({
-  navigation,
-}) => {
+type PickerKey = keyof Pick<
+  AppSettings,
+  'defaultFormatType' | 'fontSize' | 'appearance' | 'noteSort'
+>;
+
+const DEFAULT_OPTIONS: Record<PickerKey, { value: string; label: string }[]> = {
+  defaultFormatType: [
+    { value: 'plain', label: t('format.plain') },
+    { value: 'rtf', label: t('format.rich') },
+    { value: 'markdown', label: t('format.markdown') },
+  ],
+  fontSize: [
+    { value: 'small', label: t('settings.textSmall') },
+    { value: 'medium', label: t('settings.textMedium') },
+    { value: 'large', label: t('settings.textLarge') },
+  ],
+  appearance: [
+    { value: 'linen', label: t('settings.appearanceLinen') },
+    { value: 'paper', label: t('settings.appearancePaper') },
+    { value: 'wood', label: t('settings.appearanceWood') },
+  ],
+  noteSort: [
+    { value: 'updated-desc', label: t('settings.sortUpdatedDesc') },
+    { value: 'updated-asc', label: t('settings.sortUpdatedAsc') },
+    { value: 'created-desc', label: t('settings.sortCreatedDesc') },
+    { value: 'created-asc', label: t('settings.sortCreatedAsc') },
+  ],
+};
+
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
+  const { settings, updateSettings } = useNoteStore();
   const [biometricEnabled, setBiometricEnabled] = useState(false);
-  const [passwordEnabled, setPasswordEnabled] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [activePicker, setActivePicker] = useState<PickerKey | null>(null);
 
   useEffect(() => {
     checkBiometricAvailability();
     loadSettings();
   }, []);
+
+  const themeColors = useMemo(
+    () => getThemeColors(settings.appearance),
+    [settings.appearance]
+  );
+  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
   const checkBiometricAvailability = async () => {
     const compatible = await LocalAuthentication.hasHardwareAsync();
@@ -45,9 +85,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const loadSettings = async () => {
     try {
       const biometric = await AsyncStorage.getItem('biometricEnabled');
-      const password = await SecureStore.getItemAsync('appPassword');
       setBiometricEnabled(biometric === 'true');
-      setPasswordEnabled(!!password);
     } catch (error) {
       console.error('加载设置失败:', error);
     }
@@ -56,215 +94,248 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const handleToggleBiometric = async (value: boolean) => {
     if (value) {
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: '验证身份以启用生物识别',
-        fallbackLabel: '使用密码',
+        promptMessage: t('settings.faceId'),
+        fallbackLabel: t('settings.faceId'),
       });
 
       if (result.success) {
         await AsyncStorage.setItem('biometricEnabled', 'true');
         setBiometricEnabled(true);
-        Alert.alert('成功', 'Face ID 已启用');
+        Alert.alert(t('common.success'), t('settings.faceId'));
       } else {
-        Alert.alert('失败', '身份验证失败');
+        Alert.alert(t('common.error'), t('settings.faceIdDesc'));
       }
     } else {
       await AsyncStorage.setItem('biometricEnabled', 'false');
       setBiometricEnabled(false);
-      Alert.alert('成功', 'Face ID 已禁用');
     }
   };
 
-  const handleSetPassword = async () => {
-    if (password.length < 4) {
-      Alert.alert('错误', '密码至少需要4位');
-      return;
-    }
+  const renderPickerModal = () => {
+    if (!activePicker) return null;
 
-    if (password !== confirmPassword) {
-      Alert.alert('错误', '两次输入的密码不一致');
-      return;
-    }
-
-    try {
-      await SecureStore.setItemAsync('appPassword', password);
-      setPasswordEnabled(true);
-      setShowPasswordModal(false);
-      setPassword('');
-      setConfirmPassword('');
-      Alert.alert('成功', '密码已设置');
-    } catch (error) {
-      Alert.alert('错误', '设置密码失败');
-    }
-  };
-
-  const handleRemovePassword = async () => {
-    Alert.alert('移除密码', '确定要移除密码保护吗？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '确定',
-        style: 'destructive',
-        onPress: async () => {
-          await SecureStore.deleteItemAsync('appPassword');
-          setPasswordEnabled(false);
-          Alert.alert('成功', '密码已移除');
-        },
-      },
-    ]);
+    return (
+      <Modal
+        visible
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActivePicker(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setActivePicker(null)}
+        >
+          <View style={styles.pickerContent}>
+            {DEFAULT_OPTIONS[activePicker].map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={styles.pickerItem}
+                onPress={() => {
+                  updateSettings({
+                    [activePicker]: option.value,
+                  } as Partial<AppSettings>);
+                  setActivePicker(null);
+                }}
+              >
+                <Text style={styles.pickerItemText}>{option.label}</Text>
+                {settings[activePicker] === option.value && (
+                  <Ionicons name="checkmark" size={18} color={themeColors.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    );
   };
 
   return (
-    <WoodBackground>
+    <WoodBackground variant={settings.appearance}>
       <SafeAreaView style={styles.container} edges={['top']}>
-        {/* 头部 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.headerIcon}>←</Text>
+            <Ionicons name="chevron-back" size={22} color={themeColors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>设置</Text>
+          <Text style={styles.headerTitle}>{t('settings.title')}</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        {/* 设置项 */}
         <View style={styles.content}>
-          <PaperCard style={styles.section}>
-            <Text style={styles.sectionTitle}>安全设置</Text>
+          <PaperCard style={styles.section} appearance={settings.appearance}>
+            <Text style={styles.sectionTitle}>{t('settings.sectionEditor')}</Text>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => setActivePicker('defaultFormatType')}
+            >
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('settings.defaultFormat')}</Text>
+                <Text style={styles.settingDescription}>
+                  {
+                    DEFAULT_OPTIONS.defaultFormatType.find(
+                      (option) => option.value === settings.defaultFormatType
+                    )?.label
+                  }
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
+            </TouchableOpacity>
 
-            {/* Face ID */}
-            {isBiometricAvailable && (
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => setActivePicker('fontSize')}
+            >
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('settings.textSize')}</Text>
+                <Text style={styles.settingDescription}>
+                  {
+                    DEFAULT_OPTIONS.fontSize.find(
+                      (option) => option.value === settings.fontSize
+                    )?.label
+                  }
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
+            </TouchableOpacity>
+          </PaperCard>
+
+          <PaperCard style={styles.section} appearance={settings.appearance}>
+            <Text style={styles.sectionTitle}>{t('settings.sectionShare')}</Text>
+            <View style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('settings.shareFooter')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('settings.footerHint')}
+                </Text>
+              </View>
+              <Switch
+                value={settings.shareFooterEnabled}
+                onValueChange={(value) =>
+                  updateSettings({ shareFooterEnabled: value })
+                }
+                trackColor={{
+                  false: themeColors.textPlaceholder,
+                  true: themeColors.accent,
+                }}
+                thumbColor={themeColors.paperWhite}
+              />
+            </View>
+            {settings.shareFooterEnabled && (
+              <TextInput
+                style={styles.footerInput}
+                placeholder={t('settings.shareFooterPlaceholder')}
+                placeholderTextColor={themeColors.textPlaceholder}
+                value={settings.shareFooterText}
+                onChangeText={(text) => updateSettings({ shareFooterText: text })}
+              />
+            )}
+          </PaperCard>
+
+          <PaperCard style={styles.section} appearance={settings.appearance}>
+            <Text style={styles.sectionTitle}>{t('settings.sectionAppearance')}</Text>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => setActivePicker('appearance')}
+            >
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('settings.appearance')}</Text>
+                <Text style={styles.settingDescription}>
+                  {
+                    DEFAULT_OPTIONS.appearance.find(
+                      (option) => option.value === settings.appearance
+                    )?.label
+                  }
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
+            </TouchableOpacity>
+          </PaperCard>
+
+          <PaperCard style={styles.section} appearance={settings.appearance}>
+            <Text style={styles.sectionTitle}>{t('settings.sectionSort')}</Text>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => setActivePicker('noteSort')}
+            >
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('settings.sort')}</Text>
+                <Text style={styles.settingDescription}>
+                  {
+                    DEFAULT_OPTIONS.noteSort.find(
+                      (option) => option.value === settings.noteSort
+                    )?.label
+                  }
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
+            </TouchableOpacity>
+          </PaperCard>
+
+          <PaperCard style={styles.section} appearance={settings.appearance}>
+            <Text style={styles.sectionTitle}>{t('settings.sectionSecurity')}</Text>
+            {isBiometricAvailable ? (
               <View style={styles.settingItem}>
                 <View style={styles.settingLeft}>
-                  <Text style={styles.settingIcon}>🔐</Text>
-                  <View>
-                    <Text style={styles.settingLabel}>Face ID</Text>
-                    <Text style={styles.settingDescription}>
-                      使用面容识别保护笔记
-                    </Text>
-                  </View>
+                  <Text style={styles.settingLabel}>{t('settings.faceId')}</Text>
+                  <Text style={styles.settingDescription}>
+                    {t('settings.faceIdDesc')}
+                  </Text>
                 </View>
                 <Switch
                   value={biometricEnabled}
                   onValueChange={handleToggleBiometric}
+                  accessibilityLabel="faceid-switch"
                   trackColor={{
-                    false: COLORS.textPlaceholder,
-                    true: COLORS.accent,
+                    false: themeColors.textPlaceholder,
+                    true: themeColors.accent,
                   }}
-                  thumbColor={COLORS.paperWhite}
+                  thumbColor={themeColors.paperWhite}
                 />
               </View>
-            )}
-
-            {/* 密码锁定 */}
-            <View style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <Text style={styles.settingIcon}>🔑</Text>
-                <View>
-                  <Text style={styles.settingLabel}>密码锁定</Text>
-                  <Text style={styles.settingDescription}>
-                    {passwordEnabled ? '已设置密码' : '设置密码保护'}
-                  </Text>
+            ) : (
+              <View style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingLabel}>{t('settings.faceId')}</Text>
+                  <Text style={styles.settingDescription}>{t('lock.unavailable')}</Text>
                 </View>
               </View>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  if (passwordEnabled) {
-                    handleRemovePassword();
-                  } else {
-                    setShowPasswordModal(true);
-                  }
-                }}
-              >
-                <Text style={styles.buttonText}>
-                  {passwordEnabled ? '移除' : '设置'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </PaperCard>
 
-          <PaperCard style={styles.section}>
-            <Text style={styles.sectionTitle}>关于</Text>
-
+          <PaperCard style={styles.section} appearance={settings.appearance}>
+            <Text style={styles.sectionTitle}>{t('settings.sectionAbout')}</Text>
             <View style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <Text style={styles.settingIcon}>📱</Text>
-                <View>
-                  <Text style={styles.settingLabel}>应用版本</Text>
-                  <Text style={styles.settingDescription}>1.0.0</Text>
-                </View>
+                <Text style={styles.settingLabel}>{t('settings.language')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('settings.systemLanguage')}
+                </Text>
               </View>
             </View>
-
             <View style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <Text style={styles.settingIcon}>💡</Text>
-                <View>
-                  <Text style={styles.settingLabel}>功能特性</Text>
-                  <Text style={styles.settingDescription}>
-                    拟物风格 · 富文本 · Markdown
-                  </Text>
-                </View>
+                <Text style={styles.settingLabel}>{t('settings.version')}</Text>
+                <Text style={styles.settingDescription}>1.0.0</Text>
+              </View>
+            </View>
+            <View style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('settings.features')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('settings.featureDesc')}
+                </Text>
               </View>
             </View>
           </PaperCard>
         </View>
-
-        {/* 密码设置模态框 */}
-        <Modal
-          visible={showPasswordModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowPasswordModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>设置密码</Text>
-
-              <TextInput
-                style={styles.modalInput}
-                placeholder="输入密码（至少4位）"
-                placeholderTextColor={COLORS.textPlaceholder}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoFocus
-              />
-
-              <TextInput
-                style={styles.modalInput}
-                placeholder="确认密码"
-                placeholderTextColor={COLORS.textPlaceholder}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-              />
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCancel]}
-                  onPress={() => {
-                    setShowPasswordModal(false);
-                    setPassword('');
-                    setConfirmPassword('');
-                  }}
-                >
-                  <Text style={styles.modalButtonText}>取消</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonConfirm]}
-                  onPress={handleSetPassword}
-                >
-                  <Text style={styles.modalButtonText}>确定</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {renderPickerModal()}
       </SafeAreaView>
     </WoodBackground>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -275,13 +346,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
-  headerIcon: {
-    fontSize: 24,
-  },
   headerTitle: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   content: {
     flex: 1,
@@ -293,7 +361,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONT_SIZES.large,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.md,
   },
   settingItem: {
@@ -302,88 +370,52 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.woodLight,
+    borderBottomColor: colors.woodLight,
   },
   settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
     flex: 1,
-  },
-  settingIcon: {
-    fontSize: 24,
-    marginRight: SPACING.md,
   },
   settingLabel: {
     fontSize: FONT_SIZES.medium,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.xs,
   },
   settingDescription: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
-  button: {
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+  footerInput: {
+    backgroundColor: colors.paperYellow,
     borderRadius: BORDER_RADIUS.md,
-  },
-  buttonText: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     fontSize: FONT_SIZES.medium,
-    fontWeight: '600',
-    color: COLORS.paperWhite,
+    color: colors.textPrimary,
+    marginTop: SPACING.sm,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
   },
-  modalContent: {
-    backgroundColor: COLORS.paperWhite,
+  pickerContent: {
+    backgroundColor: colors.paperWhite,
     borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.xl,
-    width: '80%',
-    maxWidth: 400,
+    padding: SPACING.md,
+    width: '100%',
   },
-  modalTitle: {
-    fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.lg,
-    textAlign: 'center',
-  },
-  modalInput: {
-    backgroundColor: COLORS.paperYellow,
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    fontSize: FONT_SIZES.medium,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.md,
-  },
-  modalButtons: {
+  pickerItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: SPACING.md,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
-    marginHorizontal: SPACING.xs,
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
   },
-  modalButtonCancel: {
-    backgroundColor: COLORS.textPlaceholder,
-  },
-  modalButtonConfirm: {
-    backgroundColor: COLORS.accent,
-  },
-  modalButtonText: {
+  pickerItemText: {
     fontSize: FONT_SIZES.medium,
-    fontWeight: '600',
-    color: COLORS.paperWhite,
+    color: colors.textPrimary,
   },
 });
