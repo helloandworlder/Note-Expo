@@ -44,7 +44,7 @@ export interface ToolbarButton {
 }
 
 // 外观主题
-export type AppearanceType = 'wood' | 'linen' | 'paper';
+export type AppearanceType = 'wood' | 'linen' | 'paper' | 'dark' | 'system';
 
 // 字体大小档位
 export type FontSizeLevel = 'small' | 'medium' | 'large';

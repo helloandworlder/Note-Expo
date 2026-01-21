@@ -9,7 +9,8 @@ import {
   Dimensions,
 } from 'react-native';
 import { NoteImage, AppearanceType } from '../../types';
-import { FONTS, ThemeColors, getThemeColors } from '../../constants/theme';
+import { FONTS, ThemeColors } from '../../constants/theme';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { t } from '../../utils/i18n';
 
 interface ImageWithCaptionProps {
@@ -28,7 +29,7 @@ export const ImageWithCaption: React.FC<ImageWithCaptionProps> = ({
   appearance = 'linen',
 }) => {
   const [caption, setCaption] = useState(image.caption || '');
-  const themeColors = useMemo(() => getThemeColors(appearance), [appearance]);
+  const themeColors = useThemeColors(appearance);
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
   const handleCaptionChange = (text: string) => {

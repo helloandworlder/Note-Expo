@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { BORDER_RADIUS, ThemeColors, getThemeColors } from '../../constants/theme';
+import { BORDER_RADIUS, ThemeColors } from '../../constants/theme';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { AppearanceType } from '../../types';
 
 interface PaperCardProps {
@@ -16,10 +17,7 @@ export const PaperCard: React.FC<PaperCardProps> = ({
   contentStyle,
   appearance = 'linen',
 }) => {
-  const themeColors = useMemo(
-    () => getThemeColors(appearance),
-    [appearance]
-  );
+  const themeColors = useThemeColors(appearance);
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
   return (

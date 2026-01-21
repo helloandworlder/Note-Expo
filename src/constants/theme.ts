@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Appearance, ColorSchemeName, Platform } from 'react-native';
 import type { AppearanceType } from '../types';
 
 interface BaseThemeColors {
@@ -108,17 +108,53 @@ const WOOD_THEME = buildTheme({
   shadowDark: 'rgba(46, 32, 22, 0.32)',
 });
 
-export const THEME_COLORS: Record<AppearanceType, ThemeColors> = {
+const DARK_THEME = buildTheme({
+  woodBackground: '#141312',
+  woodLight: '#1D1B1A',
+  woodDark: '#0F0E0D',
+  paperWhite: '#1A1918',
+  paperYellow: '#1F1E1C',
+  paperLine: '#2B2825',
+  paperLineStrong: '#3B3631',
+  textPrimary: '#F2EDE6',
+  textSecondary: '#C9C1B8',
+  textPlaceholder: '#8F8780',
+  accent: '#7FA097',
+  accentDark: '#5F7B74',
+  favorite: '#E3B46B',
+  delete: '#E0857A',
+  toolbarBackground: '#171615',
+  toolbarIcon: '#BDB4AA',
+  toolbarActive: '#7FA097',
+  shadow: 'rgba(0, 0, 0, 0.4)',
+  shadowDark: 'rgba(0, 0, 0, 0.55)',
+});
+
+export const THEME_COLORS: Partial<Record<AppearanceType, ThemeColors>> = {
   linen: MINIMAL_THEME,
   paper: PAPER_THEME,
   wood: WOOD_THEME,
+  dark: DARK_THEME,
 };
 
 // 主题颜色（默认简约风）
 export const COLORS = MINIMAL_THEME;
 
-export const getThemeColors = (appearance: AppearanceType): ThemeColors =>
-  THEME_COLORS[appearance] || MINIMAL_THEME;
+export const getThemeColors = (
+  appearance: AppearanceType,
+  colorScheme?: ColorSchemeName
+): ThemeColors => {
+  if (appearance === 'system') {
+    const scheme = colorScheme || Appearance.getColorScheme();
+    return scheme === 'dark' ? DARK_THEME : MINIMAL_THEME;
+  }
+
+  if (appearance === 'dark') {
+    return DARK_THEME;
+  }
+
+  return THEME_COLORS[appearance] || MINIMAL_THEME;
+};
 
 // 字体大小
 export const FONT_SIZES = {

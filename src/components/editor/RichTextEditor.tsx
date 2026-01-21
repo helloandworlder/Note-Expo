@@ -7,7 +7,8 @@ import React, {
 } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { RichEditor, actions } from 'react-native-pell-rich-editor';
-import { FONTS, ThemeColors, getThemeColors } from '../../constants/theme';
+import { FONTS, ThemeColors } from '../../constants/theme';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { AppearanceType } from '../../types';
 
 interface RichTextEditorProps {
@@ -32,10 +33,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     ref
   ) => {
     const richText = useRef<RichEditor>(null);
-    const themeColors = useMemo(
-      () => getThemeColors(appearance || 'linen'),
-      [appearance]
-    );
+    const themeColors = useThemeColors(appearance || 'linen');
     const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
     const customCSS = `

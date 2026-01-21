@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getThemeColors } from '../../constants/theme';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { AppearanceType } from '../../types';
 
 interface WoodBackgroundProps {
@@ -13,7 +13,7 @@ export const WoodBackground: React.FC<WoodBackgroundProps> = ({
   children,
   variant = 'linen',
 }) => {
-  const themeColors = getThemeColors(variant);
+  const themeColors = useThemeColors(variant);
 
   return (
     <View style={styles.container}>

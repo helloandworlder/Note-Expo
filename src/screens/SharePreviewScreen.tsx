@@ -23,8 +23,8 @@ import {
   FONT_SCALE,
   FONTS,
   ThemeColors,
-  getThemeColors,
 } from '../constants/theme';
+import { useThemeColors } from '../hooks/useThemeColors';
 import { Note } from '../types';
 import { useNoteStore } from '../store/noteStore';
 import { getPlainText } from '../utils/contentConverter';
@@ -48,10 +48,7 @@ export const SharePreviewScreen: React.FC<SharePreviewScreenProps> = ({
   const contentFontSize = Math.round(FONT_SIZES.medium * fontScale);
   const titleFontSize = Math.round(FONT_SIZES.heading * fontScale);
   const lineHeight = Math.round(28 * fontScale);
-  const themeColors = useMemo(
-    () => getThemeColors(settings.appearance),
-    [settings.appearance]
-  );
+  const themeColors = useThemeColors(settings.appearance);
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
 
   const plainText = useMemo(
