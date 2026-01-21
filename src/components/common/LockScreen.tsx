@@ -66,8 +66,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
   return (
     <WoodBackground variant={appearance}>
       <View style={styles.container}>
-        <PaperCard style={styles.card} appearance={appearance}>
-          <Text style={styles.icon}>🔒</Text>
+        <PaperCard
+          style={styles.card}
+          contentStyle={styles.cardContent}
+          appearance={appearance}
+        >
+          <View style={styles.iconWrap}>
+            <Text style={styles.icon}>🔒</Text>
+          </View>
           <Text style={styles.title}>{t('lock.title')}</Text>
           <Text style={styles.subtitle}>{t('lock.subtitle')}</Text>
 
@@ -79,7 +85,9 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
               <Text style={styles.buttonText}>{t('lock.faceId')}</Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.unavailableText}>{t('lock.unavailable')}</Text>
+            <View style={styles.unavailableBox}>
+              <Text style={styles.unavailableText}>{t('lock.unavailable')}</Text>
+            </View>
           )}
         </PaperCard>
       </View>
@@ -98,11 +106,30 @@ const createStyles = (colors: ThemeColors) =>
     card: {
       width: '100%',
       maxWidth: 400,
+    },
+    cardContent: {
       alignItems: 'center',
+      paddingVertical: SPACING.xl,
+      paddingHorizontal: SPACING.xl,
+    },
+    iconWrap: {
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      backgroundColor: colors.paperYellow,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.paperLine,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 2,
+      marginBottom: SPACING.lg,
     },
     icon: {
-      fontSize: 64,
-      marginBottom: SPACING.lg,
+      fontSize: 32,
     },
     title: {
       fontSize: FONT_SIZES.heading,
@@ -110,12 +137,15 @@ const createStyles = (colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.textPrimary,
       marginBottom: SPACING.sm,
+      textAlign: 'center',
     },
     subtitle: {
       fontSize: FONT_SIZES.medium,
       fontFamily: FONTS.regular,
       color: colors.textSecondary,
       marginBottom: SPACING.xl,
+      textAlign: 'center',
+      lineHeight: 20,
     },
     button: {
       width: '100%',
@@ -123,6 +153,8 @@ const createStyles = (colors: ThemeColors) =>
       borderRadius: BORDER_RADIUS.md,
       paddingVertical: SPACING.md,
       alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.accentDark,
       shadowColor: colors.shadow,
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.2,
@@ -135,9 +167,19 @@ const createStyles = (colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.paperWhite,
     },
+    unavailableBox: {
+      width: '100%',
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.md,
+      borderRadius: BORDER_RADIUS.md,
+      borderWidth: 1,
+      borderColor: colors.paperLine,
+      backgroundColor: colors.paperYellow,
+      alignItems: 'center',
+    },
     unavailableText: {
       fontSize: FONT_SIZES.medium,
-      fontFamily: FONTS.regular,
+      fontFamily: FONTS.medium,
       color: colors.textSecondary,
     },
   });
