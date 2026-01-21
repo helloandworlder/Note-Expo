@@ -18,6 +18,7 @@ import {
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
+  FONTS,
   ThemeColors,
   getThemeColors,
 } from '../constants/theme';
@@ -320,7 +321,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     setNewFolderName('');
                   }}
                 >
-                  <Text style={styles.modalButtonText}>{t('common.cancel')}</Text>
+                  <Text
+                    style={[styles.modalButtonText, styles.modalButtonTextSecondary]}
+                  >
+                    {t('common.cancel')}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalButtonConfirm]}
@@ -348,10 +353,14 @@ const createStyles = (colors: ThemeColors) =>
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    backgroundColor: colors.paperWhite,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.paperLine,
   },
   headerTitle: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontFamily: FONTS.display,
+    fontWeight: '600',
     color: colors.textPrimary,
   },
   headerActions: {
@@ -368,28 +377,31 @@ const createStyles = (colors: ThemeColors) =>
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: colors.paperLine,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 1,
   },
   searchInput: {
     flex: 1,
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.regular,
     color: colors.textPrimary,
   },
   folderSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.paperWhite,
+    backgroundColor: colors.paperYellow,
     marginHorizontal: SPACING.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
-    borderColor: colors.woodLight,
+    borderColor: colors.paperLineStrong,
   },
   folderSelectorLeft: {
     flexDirection: 'row',
@@ -398,6 +410,7 @@ const createStyles = (colors: ThemeColors) =>
   },
   folderSelectorText: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.medium,
     color: colors.textPrimary,
   },
   folderSelectorRight: {
@@ -407,6 +420,7 @@ const createStyles = (colors: ThemeColors) =>
   },
   folderSelectorCount: {
     fontSize: FONT_SIZES.small,
+    fontFamily: FONTS.regular,
     color: colors.textSecondary,
   },
   notesList: {
@@ -428,16 +442,19 @@ const createStyles = (colors: ThemeColors) =>
   },
   noteDate: {
     fontSize: FONT_SIZES.small,
+    fontFamily: FONTS.regular,
     color: colors.textSecondary,
   },
   noteTitle: {
     fontSize: FONT_SIZES.large,
+    fontFamily: FONTS.medium,
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: SPACING.xs,
   },
   noteContent: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.regular,
     color: colors.textSecondary,
     lineHeight: 20,
   },
@@ -448,11 +465,13 @@ const createStyles = (colors: ThemeColors) =>
   },
   emptyText: {
     fontSize: FONT_SIZES.large,
+    fontFamily: FONTS.medium,
     color: colors.textSecondary,
     marginBottom: SPACING.sm,
   },
   emptyHint: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.regular,
     color: colors.textPlaceholder,
   },
   menuOverlay: {
@@ -466,6 +485,8 @@ const createStyles = (colors: ThemeColors) =>
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
     shadowColor: colors.shadow,
+    borderWidth: 1,
+    borderColor: colors.paperLine,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -479,6 +500,7 @@ const createStyles = (colors: ThemeColors) =>
   },
   menuTitle: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.medium,
     fontWeight: '600',
     color: colors.textPrimary,
   },
@@ -487,15 +509,18 @@ const createStyles = (colors: ThemeColors) =>
     gap: SPACING.sm,
   },
   menuActionChip: {
-    backgroundColor: colors.paperYellow,
+    backgroundColor: colors.paperWhite,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.paperLine,
   },
   menuActionText: {
     fontSize: FONT_SIZES.small,
+    fontFamily: FONTS.medium,
     fontWeight: '600',
     color: colors.textPrimary,
   },
@@ -517,6 +542,7 @@ const createStyles = (colors: ThemeColors) =>
   },
   folderName: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.medium,
     color: colors.textPrimary,
   },
   folderItemRight: {
@@ -526,6 +552,7 @@ const createStyles = (colors: ThemeColors) =>
   },
   folderCount: {
     fontSize: FONT_SIZES.small,
+    fontFamily: FONTS.regular,
     color: colors.textSecondary,
   },
   modalOverlay: {
@@ -540,10 +567,13 @@ const createStyles = (colors: ThemeColors) =>
     padding: SPACING.xl,
     width: '80%',
     maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.paperLine,
   },
   modalTitle: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontFamily: FONTS.display,
+    fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: SPACING.lg,
     textAlign: 'center',
@@ -554,8 +584,11 @@ const createStyles = (colors: ThemeColors) =>
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.regular,
     color: colors.textPrimary,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: colors.paperLine,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -569,14 +602,23 @@ const createStyles = (colors: ThemeColors) =>
     marginHorizontal: SPACING.xs,
   },
   modalButtonCancel: {
-    backgroundColor: colors.textPlaceholder,
+    backgroundColor: colors.paperLineStrong,
   },
   modalButtonConfirm: {
     backgroundColor: colors.accent,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   modalButtonText: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.medium,
     fontWeight: '600',
     color: colors.paperWhite,
+  },
+  modalButtonTextSecondary: {
+    color: colors.textPrimary,
   },
 });

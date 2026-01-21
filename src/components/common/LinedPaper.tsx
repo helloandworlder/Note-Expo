@@ -67,6 +67,7 @@ const createStyles = (colors: ThemeColors) =>
       right: 0,
       height: 1,
       backgroundColor: colors.paperLine,
+      opacity: 0.65,
     },
     content: {
       position: 'relative',

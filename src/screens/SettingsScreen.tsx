@@ -19,6 +19,7 @@ import {
   FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
+  FONTS,
   ThemeColors,
   getThemeColors,
 } from '../constants/theme';
@@ -345,10 +346,14 @@ const createStyles = (colors: ThemeColors) =>
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    backgroundColor: colors.paperWhite,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.paperLine,
   },
   headerTitle: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontFamily: FONTS.display,
+    fontWeight: '600',
     color: colors.textPrimary,
   },
   content: {
@@ -360,7 +365,8 @@ const createStyles = (colors: ThemeColors) =>
   },
   sectionTitle: {
     fontSize: FONT_SIZES.large,
-    fontWeight: 'bold',
+    fontFamily: FONTS.medium,
+    fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: SPACING.md,
   },
@@ -370,19 +376,21 @@ const createStyles = (colors: ThemeColors) =>
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.woodLight,
+    borderBottomColor: colors.paperLine,
   },
   settingLeft: {
     flex: 1,
   },
   settingLabel: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.medium,
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: SPACING.xs,
   },
   settingDescription: {
     fontSize: FONT_SIZES.small,
+    fontFamily: FONTS.regular,
     color: colors.textSecondary,
   },
   footerInput: {
@@ -391,8 +399,11 @@ const createStyles = (colors: ThemeColors) =>
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.regular,
     color: colors.textPrimary,
     marginTop: SPACING.sm,
+    borderWidth: 1,
+    borderColor: colors.paperLine,
   },
   modalOverlay: {
     flex: 1,
@@ -406,6 +417,8 @@ const createStyles = (colors: ThemeColors) =>
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
     width: '100%',
+    borderWidth: 1,
+    borderColor: colors.paperLine,
   },
   pickerItem: {
     flexDirection: 'row',
@@ -416,6 +429,7 @@ const createStyles = (colors: ThemeColors) =>
   },
   pickerItemText: {
     fontSize: FONT_SIZES.medium,
+    fontFamily: FONTS.medium,
     color: colors.textPrimary,
   },
 });
