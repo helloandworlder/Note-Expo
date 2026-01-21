@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -162,7 +163,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
           <View style={{ width: 40 }} />
         </View>
 
-        <View style={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
           <PaperCard style={styles.section} appearance={settings.appearance}>
             <Text style={styles.sectionTitle}>{t('settings.sectionEditor')}</Text>
             <TouchableOpacity
@@ -328,7 +332,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
               </View>
             </View>
           </PaperCard>
-        </View>
+        </ScrollView>
         {renderPickerModal()}
       </SafeAreaView>
     </WoodBackground>
@@ -357,8 +361,8 @@ const createStyles = (colors: ThemeColors) =>
     color: colors.textPrimary,
   },
   content: {
-    flex: 1,
     padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
   },
   section: {
     marginBottom: SPACING.lg,
